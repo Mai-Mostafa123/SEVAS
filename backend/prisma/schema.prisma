@@ -1,0 +1,288 @@
+// Prisma Schema for SEVAS — Smart Emergency Vehicle Alert System
+// Database: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SEVAS_TEAM_LEADER
+  SEVAS_TEAM_MEMBER
+  SCHOOL_ADMIN
+  PARENT
+}
+
+enum VehicleStatus {
+  ONLINE
+  OFFLINE
+  EMERGENCY
+  MAINTENANCE
+}
+
+enum GpsStatus {
+  ACTIVE
+  SIGNAL_LOST
+  CALIBRATING
+}
+
+enum SensorStatus {
+  NORMAL
+  ALERT
+  OFFLINE
+}
+
+enum EmergencySeverity {
+  LOW
+  MEDIUM
+  SEVERE
+}
+
+enum IncidentStatus {
+  ACTIVE
+  UNDER_REVIEW
+  RESPONDING
+  RESOLVED
+}
+
+enum ParentNotificationStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  ON_BOARD
+  DEBOARDED
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  passwordHash String
+  fullName     String
+  role         Role      @default(SCHOOL_ADMIN)
+  email        String?   @unique
+  phoneNumber  String?
+  schoolId     String?
+  school       School?   @relation(fields: [schoolId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  auditLogs    AuditLog[]
+
+  @@index([username])
+  @@index([schoolId])
+}
+
+model School {
+  id                   String                      @id @default(uuid())
+  name                 String
+  address              String
+  district             String
+  active               Boolean                     @default(true)
+  users                User[]
+  vehicles             Vehicle[]
+  students             Student[]
+  registrationRequests SchoolRegistrationRequest[]
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+}
+
+model SchoolRegistrationRequest {
+  id                 String        @id @default(uuid())
+  fullName           String        // Enforces exactly four name parts
+  nationalId         String
+  phoneNumber        String
+  whatsappNumber     String
+  professionalTitle  String
+  schoolName         String
+  schoolId           String?
+  school             School?       @relation(fields: [schoolId], references: [id])
+  status             RequestStatus @default(PENDING)
+  generatedUsername  String?
+  temporaryPassword  String?
+  reviewedBy         String?
+  reviewedAt         DateTime?
+  notes              String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+}
+
+model Driver {
+  id          String    @id @default(uuid())
+  fullName    String
+  nationalId  String    @unique
+  phone       String
+  whatsapp    String
+  bloodType   String
+  vehicle     Vehicle?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Vehicle {
+  id              String           @id // e.g. "BUS-001"
+  busNumber       String
+  plateNumber     String           @unique
+  deviceId        String           @unique
+  vehicleType     String
+  capacity        Int              @default(30)
+  assignedRoute   String
+  status          VehicleStatus    @default(ONLINE)
+  currentSpeed    Float            @default(0.0)
+  gpsStatus       GpsStatus        @default(ACTIVE)
+  sensorsStatus   SensorStatus     @default(NORMAL)
+  studentsOnBoard Int              @default(0)
+  schoolId        String
+  school          School           @relation(fields: [schoolId], references: [id])
+  driverId        String           @unique
+  driver          Driver           @relation(fields: [driverId], references: [id])
+  students        Student[]
+  locations       GpsLocation[]
+  emergencies     EmergencyAlert[]
+  aiDetections    AiDetection[]
+  nfcScans        Attendance[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([schoolId])
+}
+
+model GpsLocation {
+  id          String   @id @default(uuid())
+  vehicleId   String
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  latitude    Float
+  longitude   Float
+  speed       Float
+  heading     Float?
+  altitude    Float?
+  recordedAt  DateTime @default(now())
+
+  @@index([vehicleId, recordedAt])
+}
+
+model Student {
+  id                String       @id @default(uuid())
+  fullName          String       // Enforces 4-part name check
+  studentId         String       @unique
+  nationalId        String       @unique
+  classGrade        String
+  nfcId             String       @unique
+  bloodType         String
+  medicalInfo       String?
+  allergies         String?
+  parent1Name       String
+  parent2Name       String?
+  parentPhone       String
+  parentWhatsapp    String
+  emergencyContact  String
+  schoolId          String
+  school            School       @relation(fields: [schoolId], references: [id])
+  assignedVehicleId String?
+  assignedVehicle   Vehicle?     @relation(fields: [assignedVehicleId], references: [id])
+  isOnBoard         Boolean      @default(false)
+  isRegistered      Boolean      @default(true)
+  attendances       Attendance[]
+  notifications     Notification[]
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([schoolId])
+  @@index([nfcId])
+}
+
+model Attendance {
+  id          String           @id @default(uuid())
+  studentId   String
+  student     Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  vehicleId   String?
+  vehicle     Vehicle?         @relation(fields: [vehicleId], references: [id])
+  nfcId       String
+  scanTime    DateTime         @default(now())
+  eventType   String           // "BOARD", "DEBOARD", "SCHOOL_ARRIVAL"
+  status      AttendanceStatus @default(PRESENT)
+
+  @@index([studentId, scanTime])
+  @@index([vehicleId])
+}
+
+model EmergencyAlert {
+  id                       String                   @id @default(uuid())
+  vehicleId                String
+  vehicle                  Vehicle                  @relation(fields: [vehicleId], references: [id])
+  severity                 EmergencySeverity        @default(SEVERE)
+  latitude                 Float
+  longitude                Float
+  locationName             String
+  studentsOnBoard          Int
+  estimatedInjured         Int                      @default(0)
+  fireDetected             Boolean                  @default(false)
+  description              String
+  status                   IncidentStatus           @default(ACTIVE)
+  parentNotificationStatus ParentNotificationStatus @default(PENDING)
+  parentNotifiedAt         DateTime?
+  accidentConfidence       Float                    @default(0.97)
+  injuryConfidence         Float                    @default(0.91)
+  fireConfidence           Float                    @default(0.02)
+  resolvedAt               DateTime?
+  resolutionNotes          String?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+
+  @@index([vehicleId, status])
+}
+
+model AiDetection {
+  id                   String   @id @default(uuid())
+  vehicleId            String
+  vehicle              Vehicle  @relation(fields: [vehicleId], references: [id])
+  frameTimestamp       DateTime @default(now())
+  passengerCount       Int
+  accidentProbability  Float
+  fireRiskProbability  Float
+  driverAttentionScore Float
+  modelVersion         String   @default("YOLOv11-TensorRT-Edge")
+
+  @@index([vehicleId, frameTimestamp])
+}
+
+model Notification {
+  id              String   @id @default(uuid())
+  studentId       String?
+  student         Student? @relation(fields: [studentId], references: [id])
+  parentPhone     String
+  message         String
+  deliveryChannel String   @default("WHATSAPP") // "WHATSAPP", "SMS"
+  deliveryStatus  String   @default("DELIVERED") // "SENT", "DELIVERED", "READ", "FAILED"
+  sentAt          DateTime @default(now())
+
+  @@index([studentId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  actor      String
+  actorRole  Role
+  target     String
+  details    String
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  recordedAt DateTime @default(now())
+
+  @@index([action])
+  @@index([recordedAt])
+}

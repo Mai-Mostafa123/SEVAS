@@ -1,0 +1,6 @@
+{
+  "name": "SEVAS — Smart Emergency Vehicle Alert System",
+  "description": "SEVAS is a premier emergency management and smart transportation platform combining NFC attendance, live GPS tracking, AI accident detection, and instant school and parent alerts. Every second saves a life.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
